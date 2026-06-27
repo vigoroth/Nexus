@@ -1,8 +1,8 @@
 # Nexus
 
-A self-hosted, local-first AI agent workspace built from scratch — chat, tool-using agents, retrieval-augmented generation (RAG), persistent memory, and full observability. Inspired by the local-first philosophy of projects like Odysseus, Nexus is designed so you understand every layer, run it on your own hardware, and keep your data yours.
+A self-hosted, local-first AI agent workspace built from scratch — tool-using agents, advanced retrieval-augmented generation (RAG), persistent memory, web search, full observability, and a streaming chat UI with conversation history. Runs on OpenAI or fully offline on local models. Inspired by the local-first philosophy of self-hosted AI workspaces.
 
-**Version 1.0** — core agent, RAG, memory, and monitoring complete.
+**Version 1.1**
 
 ---
 
@@ -10,34 +10,42 @@ A self-hosted, local-first AI agent workspace built from scratch — chat, tool-
 
 Nexus is an autonomous AI agent that can:
 
-- **Reason and act in a loop** — using the ReAct pattern, it decides when to call tools, reads the results, and continues until it can answer.
-- **Operate on your system** — read files, write files, list directories, and run shell commands.
-- **Answer from your own documents** — ingest `.txt`, `.md`, and `.pdf` files, chunk and embed them, and retrieve relevant passages with citations (RAG).
-- **Remember you** — short-term conversation memory (within a session) and long-term memory (durable facts that persist across every session).
-- **Monitor itself** — every run records its latency, token usage, cost, and success/failure to a database, surfaced in a live Grafana dashboard.
-- **Swap models freely** — built on an OpenAI-compatible provider layer, so switching from OpenAI to a local model (Ollama, vLLM, LM Studio) is a configuration change, not a code change.
+- **Reason and act in a loop** — a LangGraph ReAct agent that decides when to call tools, reads the results, and continues until it can answer.
+- **Operate on your system** — read files, write files, list directories, run shell commands.
+- **Search the live web** — answer questions about current events and anything beyond its training data (DuckDuckGo, no API key).
+- **Answer from your own documents** — advanced RAG: hybrid search (semantic + keyword), Reciprocal Rank Fusion, cross-encoder reranking, and LLM query expansion, with citations.
+- **Remember you** — short-term conversation memory (per thread) and long-term memory (durable facts that persist across every session).
+- **Run locally or in the cloud** — built on an OpenAI-compatible provider layer; switch between OpenAI and a local model (Ollama) with a single config change, no code edits.
+- **Monitor itself** — every run records latency, token usage, cost, and success/failure to Postgres, surfaced in a live Grafana dashboard.
+- **Chat like a real app** — streaming web UI with a conversation sidebar; past chats persist and reopen.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Agent core: planner — tool loop — memory        │
-│     ├─ Tools: read/write file, list, shell, RAG  │
-│     ├─ LLM provider layer (OpenAI ⇄ local)       │
-│     └─ Prompt + context management                │
-├─────────────────────────────────────────────────┤
-│  RAG: ingest → chunk → embed → pgvector → search │
-├─────────────────────────────────────────────────┤
-│  Memory: short-term (SQLite) + long-term (PG)    │
-├─────────────────────────────────────────────────┤
-│  Observability: per-run metrics → Postgres →     │
-│                 Grafana dashboards                │
-├─────────────────────────────────────────────────┤
-│  Infra: Docker Compose (Postgres/pgvector +      │
-│         Grafana)                                  │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Web UI (streaming chat + conversation sidebar)           │
+│     FastAPI backend  ·  SSE token streaming  ·  HTML/JS   │
+├──────────────────────────────────────────────────────────┤
+│  Agent core (LangGraph ReAct loop)                        │
+│     ├─ LLM provider layer (OpenAI ⇄ Ollama)               │
+│     ├─ Tools: file I/O · shell · web search               │
+│     │         · document search (RAG) · memory            │
+│     └─ Prompt + tool-selection management                 │
+├──────────────────────────────────────────────────────────┤
+│  Advanced RAG                                             │
+│     ingest → chunk → embed → pgvector                     │
+│     query → expand → hybrid (dense+sparse) → RRF          │
+│             → cross-encoder rerank → top-k → cite         │
+├──────────────────────────────────────────────────────────┤
+│  Memory: short-term (SQLite checkpointer)                 │
+│          long-term (Postgres key-value)                   │
+├──────────────────────────────────────────────────────────┤
+│  Observability: per-run metrics → Postgres → Grafana      │
+├──────────────────────────────────────────────────────────┤
+│  Infra: Docker Compose (Postgres/pgvector + Grafana)      │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -47,14 +55,20 @@ Nexus is an autonomous AI agent that can:
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Language | Python 3.11 | Standard for the AI/LLM ecosystem |
-| Agent framework | LangChain + LangGraph | Industry-standard agent orchestration; LangGraph for the stateful tool loop |
-| LLM provider | OpenAI (swappable) | OpenAI-compatible layer enables local models later |
-| Vector store | Postgres + pgvector | One database for vectors, metadata, and app state; production-common pattern |
-| Embeddings | OpenAI `text-embedding-3-small` | Cost-effective, strong retrieval quality |
-| Short-term memory | LangGraph SQLite checkpointer | Conversation state persisted per thread |
+| Agent framework | LangChain + LangGraph | Stateful tool-calling agent loop with checkpointing |
+| LLM (cloud) | OpenAI (`gpt-4o-mini`) | Strong, cost-effective default |
+| LLM (local) | Ollama (`qwen3` family) | Offline, zero-cost, private; reliable tool-calling |
+| Provider layer | OpenAI-compatible | One abstraction, cloud or local via `.env` |
+| Vector store | Postgres + pgvector | Vectors, full-text, metadata, and app state in one DB |
+| Embeddings | OpenAI `text-embedding-3-small` | Cost-effective retrieval quality |
+| Retrieval | Hybrid (pgvector + Postgres FTS) + RRF + cross-encoder rerank | Production-grade RAG pipeline |
+| Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Local, fast, precise re-scoring |
+| Web search | DuckDuckGo (`ddgs`) | Free, no API key |
+| Short-term memory | LangGraph SQLite checkpointer | Per-conversation state |
 | Long-term memory | Postgres key-value table | Durable cross-session facts |
-| Tracing (dev) | LangSmith | Full execution traces during development |
-| Metrics (prod) | Custom recorder → Postgres → Grafana | Local-first observability, no external telemetry |
+| Web backend | FastAPI + SSE | Async streaming chat endpoint |
+| Tracing (dev) | LangSmith | Full execution traces |
+| Metrics (prod) | Custom recorder → Postgres → Grafana | Local-first observability |
 | Infrastructure | Docker Compose | Postgres + Grafana with one command |
 
 ---
@@ -66,31 +80,38 @@ nexus/
 ├── app/
 │   ├── core/
 │   │   ├── config.py            # typed settings, loaded once from .env
-│   │   ├── llm.py               # swappable LLM provider + tracked calls
+│   │   ├── llm.py               # swappable LLM provider (OpenAI/Ollama)
 │   │   ├── pricing.py           # token → cost conversion
 │   │   └── metrics.py           # per-run metrics recorder
 │   ├── tools/
 │   │   ├── os_tools.py          # read/write file, list dir, run shell
-│   │   ├── rag_tool.py          # document search as an agent tool
+│   │   ├── web_search.py        # DuckDuckGo web search
+│   │   ├── rag_tool.py          # document search (advanced RAG pipeline)
 │   │   └── memory_tools.py      # save/load long-term memory
 │   ├── agent/
-│   │   ├── state.py             # the graph state (message history)
-│   │   ├── graph.py             # the LangGraph agent loop
-│   │   └── agent_demo.py        # run the agent
+│   │   ├── state.py             # graph state (message history)
+│   │   ├── graph.py             # LangGraph agent loop, tool binding
+│   │   └── agent_demo.py        # run_agent() entry point
 │   ├── rag/
-│   │   ├── loader.py            # load documents into text
-│   │   ├── chunker.py           # recursive chunking with overlap
+│   │   ├── loader.py            # documents → text
+│   │   ├── chunker.py           # recursive chunking
+│   │   ├── semantic_chunker.py  # semantic (meaning-based) chunking
 │   │   ├── store.py             # embed + store in pgvector
-│   │   ├── retriever.py         # similarity search
-│   │   └── ingest_demo.py       # ingestion pipeline
-│   └── memory/
-│       ├── long_term.py         # Postgres-backed durable memory
-│       └── memory_demo.py       # short + long-term memory demos
+│   │   ├── retriever.py         # dense similarity search
+│   │   ├── hybrid.py            # hybrid search + RRF + rerank + expansion
+│   │   ├── rerank.py            # cross-encoder reranking
+│   │   └── query_rewrite.py     # LLM query expansion
+│   ├── memory/
+│   │   └── long_term.py         # Postgres-backed durable memory
+│   └── web/
+│       ├── server.py            # FastAPI: chat (streaming) + conversation API
+│       ├── conversations.py     # conversation/message persistence
+│       └── index.html           # chat UI with sidebar
 ├── docker/
 │   ├── docker-compose.yml       # Postgres/pgvector + Grafana
 │   └── grafana/provisioning/    # auto-provisioned data source
+├── Modelfile.qwen               # Ollama model variant (extended context)
 ├── .env.example                 # configuration template
-├── pyproject.toml               # dependencies
 └── README.md
 ```
 
@@ -99,118 +120,109 @@ nexus/
 ## Quick start
 
 ### Prerequisites
-
 - Python 3.11+
-- Docker (with Docker Desktop + WSL integration on Windows)
-- An OpenAI API key
+- Docker (Docker Desktop + WSL integration on Windows)
+- An OpenAI API key (optional if running fully local with Ollama)
 
-### 1. Clone and set up the environment
-
+### 1. Environment
 ```bash
-git clone https://github.com/<your-username>/nexus.git
-cd nexus
-
-# create the environment (conda example)
+git clone https://github.com/<your-username>/Nexus.git
+cd Nexus
 conda create -n nexus python=3.11 -y
 conda activate nexus
-
-# install dependencies
 pip install langchain langchain-openai langgraph langchain-core \
             langgraph-checkpoint-sqlite langchain-postgres langchain-community \
-            "psycopg[binary]" pypdf pydantic pydantic-settings \
-            python-dotenv tiktoken openai
+            langchain-experimental "psycopg[binary]" pypdf pydantic \
+            pydantic-settings python-dotenv tiktoken openai \
+            ddgs sentence-transformers fastapi "uvicorn[standard]" sse-starlette
 ```
 
-### 2. Configure secrets
-
+### 2. Configure
 ```bash
-cp .env.example .env
-# edit .env and add your OPENAI_API_KEY
+cp .env.example .env   # add OPENAI_API_KEY (or configure Ollama — see below)
 ```
 
-### 3. Start the infrastructure
-
+### 3. Infrastructure
 ```bash
 docker compose -f docker/docker-compose.yml up -d
 # Postgres (pgvector) on localhost:5434
 # Grafana on http://localhost:3001  (admin / admin)
+
+# enable pgvector + full-text index (one-time)
+docker exec claude_desktop_pg psql -U claude -d claude_desktop -c "
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE IF EXISTS langchain_pg_embedding
+  ADD COLUMN IF NOT EXISTS fts tsvector
+  GENERATED ALWAYS AS (to_tsvector('english', document)) STORED;
+CREATE INDEX IF NOT EXISTS idx_fts ON langchain_pg_embedding USING GIN (fts);
+"
 ```
 
-### 4. Run it
-
+### 4. Run
 ```bash
 # ingest a document into the vector store
 python -m app.rag.ingest_demo
 
-# run the agent (uses tools, RAG, and memory)
-python -m app.agent.agent_demo
-
-# RAG demo — the agent answers from your documents
-python -m app.rag.rag_demo
-
-# memory demos — short-term and long-term recall
-python -m app.memory.memory_demo
-python -m app.memory.long_term_demo
+# launch the chat UI
+python -m app.web.server
+# open http://localhost:8000
 ```
 
 ---
 
-## Configuration
+## Running fully local (Ollama)
 
-All configuration lives in `.env` (see `.env.example`):
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | _(required)_ |
-| `LLM_MODEL` | Chat model | `gpt-4o-mini` |
-| `EMBED_MODEL` | Embedding model | `text-embedding-3-small` |
-| `LLM_PROVIDER` | Provider name | `openai` |
-| `LLM_BASE_URL` | Override for local/compatible servers | _(blank = OpenAI)_ |
-| `DATABASE_URL` | Postgres connection string | `postgresql+psycopg://...localhost:5434...` |
-
-### Switching to a local model
-
-Nexus uses an OpenAI-compatible provider layer. To run against a local model (e.g. Ollama):
+Nexus uses an OpenAI-compatible provider layer, so switching to a local model is a config change only.
 
 ```bash
-# in .env
-LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=llama3.1
+# install Ollama, pull a tool-capable model
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen3:8b
+
+# (recommended) build a variant with a larger context window for agent loops
+ollama create qwen3-agent -f Modelfile.qwen
 ```
 
-No code changes required.
+Then in `.env`:
+```
+LLM_PROVIDER=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=qwen3-agent
+```
+No code changes. Switch back to OpenAI by setting `LLM_PROVIDER=openai`, blanking `LLM_BASE_URL`, and `LLM_MODEL=gpt-4o-mini`.
+
+---
+
+## Advanced RAG pipeline
+
+Retrieval runs a full modern pipeline:
+
+1. **Query expansion** — the LLM rewrites the question into multiple focused search queries.
+2. **Hybrid search** — each query runs dense (pgvector semantic) and sparse (Postgres full-text) search.
+3. **Reciprocal Rank Fusion** — the two ranked lists are fused; agreement floats to the top.
+4. **Cross-encoder reranking** — candidates are re-scored against the original question for precision.
+5. **Citation** — top chunks are returned numbered and sourced for the LLM to cite.
+
+Chunking supports both recursive (fast) and semantic (meaning-based) strategies.
 
 ---
 
 ## Monitoring
 
-Every agent run records its metrics (duration, tokens, cost, success) to the `run_metrics` table in Postgres. A Grafana dashboard (at `http://localhost:3001`) visualizes:
-
-- Cost per run over time
-- Total spend
-- Run count
-- p95 latency
-- Error rate
-- Token usage
-
-The Postgres data source is auto-provisioned via `docker/grafana/provisioning/`.
+Every agent run records metrics (duration, tokens, cost, success) to the `run_metrics` table. The Grafana dashboard at `http://localhost:3001` shows cost over time, total spend, run count, p95 latency, error rate, and token usage. The Postgres data source is auto-provisioned.
 
 ---
 
 ## Roadmap
 
-- [ ] Containerize the application itself (full `docker compose up` stack)
-- [ ] Web chat UI
-- [ ] Local model support via Ollama (provider layer is ready)
-- [ ] Semantic and late chunking strategies for RAG
-- [ ] Hybrid search (dense + keyword) with reranking
-- [ ] Multi-agent workflows
+- [ ] MCP (Model Context Protocol) integration — connect to the ecosystem of external tool servers
+- [ ] Skills system — packaged, progressively-disclosed domain capabilities
+- [ ] Eval harness — automated regression testing of agent behavior
+- [ ] Containerize the app itself (full one-command stack)
+- [ ] Model routing (local for simple tasks, cloud for hard ones)
+- [ ] Electron/Tauri desktop packaging
 
 ---
-
-## Acknowledgements
-
-Built as a from-scratch learning project to deeply understand AI agents, RAG, and observability. Inspired by the local-first, privacy-first philosophy of self-hosted AI workspaces.
 
 ## License
 
