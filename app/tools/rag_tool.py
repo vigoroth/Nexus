@@ -2,22 +2,18 @@ from langchain_core.tools import tool
 
 from app.rag.retriever import search
 
+from app.rag.hybrid import hybrid_search_expanded
+
 
 @tool
 def search_documents(query: str) -> str:
     """Search the user's personal knowledge base of ingested documents.
-    ALWAYS use this tool first when the user asks about their notes, their
-    documents, advice they've saved, or anything in "my documents" / "my files".
-    This searches an indexed vector database, NOT the filesystem. Do not use
-    shell or file-reading tools to look for ingested content; use this instead.
+    ALWAYS use this for questions about the user's notes, saved documents,
+    or anything in "my documents". Searches an indexed database (hybrid
+    semantic + keyword with reranking), NOT the filesystem.
     """
-    results = search(query, k=4)
-    if not results:
+    chunks = hybrid_search_expanded(query, top_k=4)
+    if not chunks:
         return "No relevant documents found."
-
-    blocks = []
-    for i, r in enumerate(results, 1):
-        blocks.append(
-            f"[{i}] (source: {r['source']}, score: {r['score']})\n{r['text']}"
-        )
+    blocks = [f"[{i}] {c}" for i, c in enumerate(chunks, 1)]
     return "\n\n".join(blocks)

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+    
+    def is_local(self) -> bool:
+        return self.llm_provider == "ollama"
 
     @field_validator("llm_base_url", mode="before")
     @classmethod

@@ -12,9 +12,7 @@ PRICES : dict[str, tuple[float, float]] = {
 
 }
 
-def cost_usd(model:str , input_tokens:int, output_tokens:int) -> float:
-    """Return the cost in USD for a given model and token usage."""
-    if model not in PRICES:
-        raise ValueError(f"Unknown model {model}")
-    input_price, output_price = PRICES[model]
-    return (input_tokens / 1_000_000) * input_price + (output_tokens / 1_000_000) * output_price
+def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
+    # Unknown models (e.g. local Ollama models) are free → cost 0.0
+    in_price, out_price = PRICES.get(model, (0.0, 0.0))
+    return (input_tokens / 1_000_000) * in_price + (output_tokens / 1_000_000) * out_price

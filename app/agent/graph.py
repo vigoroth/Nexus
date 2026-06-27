@@ -1,3 +1,4 @@
+from app.tools.web_search import web_search
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import SystemMessage
@@ -22,15 +23,20 @@ Tool selection rules:
   user explicitly names.
 
 Think step by step. Be concise. When you answer from search_documents results,
-cite the source numbers like [1], [2]."""
+cite the source numbers like [1], [2].
+
+
+-For current events, recent news, prices, or facts that may have changed, 
+ use web_search. For the user's own documents use search_documents; 
+ for their personal facts use load_memory."""
 
 
 def build_graph(checkpointer=None) -> StateGraph:
     """Build and compile the agent graph."""
 
     # bind tools to the LLM so it knows what it can call
-    all_tools = OS_TOOLS + [search_documents, save_memory, load_memory]
-    llm = get_llm().bind_tools(all_tools)
+    all_tools = OS_TOOLS + [search_documents, save_memory, load_memory, web_search]
+    llm = get_llm(streaming=True).bind_tools(all_tools)
 
     def llm_node(state: AgentState) -> dict:
         """Call the LLM with the current message history."""

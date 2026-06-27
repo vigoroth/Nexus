@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #1a1a1a;
+         color: #e8e8e8; display: flex; height: 100vh; }
+
+  /* sidebar */
+  #sidebar { width: 260px; background: #141414; border-right: 1px solid #2a2a2a;
+             display: flex; flex-direction: column; }
+  #sidebar h2 { font-size: 1rem; padding: 1rem; margin: 0; color: #d97757; }
+  #newchat { margin: 0 1rem 1rem; padding: 0.6rem; border-radius: 8px;
+             border: 1px solid #d97757; background: transparent; color: #d97757;
+             cursor: pointer; font-size: 0.9rem; }
+  #newchat:hover { background: #d97757; color: #fff; }
+  #convlist { flex: 1; overflow-y: auto; }
+  .conv { padding: 0.6rem 1rem; cursor: pointer; font-size: 0.85rem;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          border-left: 3px solid transparent; }
+  .conv:hover { background: #222; }
+  .conv.active { background: #262626; border-left-color: #d97757; }
+
+  /* main chat */
+  #main { flex: 1; display: flex; flex-direction: column; }
+  #chat { flex: 1; overflow-y: auto; padding: 1rem; max-width: 720px;
+          margin: 0 auto; width: 100%; }
+  .msg { margin: 0.75rem 0; padding: 0.75rem 1rem; border-radius: 12px;
+         white-space: pre-wrap; line-height: 1.5; }
+  .user { background: #2d2d2d; margin-left: 3rem; }
+  .bot  { background: #262626; margin-right: 3rem; }
+  #form { display: flex; padding: 1rem; gap: 0.5rem; border-top: 1px solid #2a2a2a;
+          max-width: 720px; margin: 0 auto; width: 100%; }
+  #input { flex: 1; padding: 0.75rem; border-radius: 8px; border: 1px solid #444;
+           background: #222; color: #eee; font-size: 1rem; }
+  button#send { padding: 0.75rem 1.25rem; border-radius: 8px; border: none;
+                background: #d97757; color: white; cursor: pointer; font-size: 1rem; }
+  button#send:disabled { opacity: 0.5; }
+</style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>Nexus</h2>
+    <button id="newchat">+ New chat</button>
+    <div id="convlist"></div>
+  </div>
+
+  <div id="main">
+    <div id="chat"></div>
+    <form id="form">
+      <input id="input" placeholder="Ask anything..." autocomplete="off" autofocus>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </div>
+
+<script>
+const chat = document.getElementById("chat");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+const send = document.getElementById("send");
+const convlist = document.getElementById("convlist");
+const newchat = document.getElementById("newchat");
+
+let currentConvId = null;
+
+function addMsg(text, cls) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+// load the sidebar list
+async function loadConversations() {
+  const resp = await fetch("/conversations");
+  const convs = await resp.json();
+  convlist.innerHTML = "";
+  for (const c of convs) {
+    const div = document.createElement("div");
+    div.className = "conv" + (c.id === currentConvId ? " active" : "");
+    div.textContent = c.title;
+    div.onclick = () => openConversation(c.id);
+    convlist.appendChild(div);
+  }
+}
+
+// load one conversation's messages into the chat area
+async function openConversation(id) {
+  currentConvId = id;
+  const resp = await fetch("/conversations/" + id);
+  const messages = await resp.json();
+  chat.innerHTML = "";
+  for (const m of messages) {
+    addMsg(m.content, m.role === "user" ? "user" : "bot");
+  }
+  loadConversations();  // refresh active highlight
+}
+
+// start a fresh chat
+newchat.onclick = () => {
+  currentConvId = null;
+  chat.innerHTML = "";
+  loadConversations();
+  input.focus();
+};
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+
+  addMsg(message, "user");
+  input.value = "";
+  send.disabled = true;
+  const botDiv = addMsg("", "bot");
+
+  const resp = await fetch("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, conversation_id: currentConvId }),
+  });
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by blank lines
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop();  // keep incomplete frame in buffer
+
+    for (const frame of frames) {
+      let event = "message", data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) data += line.slice(5).replace(/^ /, "");
+      }
+      if (event === "conversation") {
+        currentConvId = data;          // backend told us the new id
+      } else if (event === "done") {
+        // finished
+      } else if (data) {
+        botDiv.textContent += data;    // a streamed token chunk
+        chat.scrollTop = chat.scrollHeight;
+      }
+    }
+  }
+
+  send.disabled = false;
+  input.focus();
+  loadConversations();  // refresh sidebar (new chat appears / moves to top)
+});
+
+// initial load
+loadConversations();
+</script>
+</body>
+</html>

@@ -14,16 +14,17 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 def get_llm(*, streaming: bool = False, temperature: float | None = None) -> ChatOpenAI:
     settings = get_settings()
+    # Ollama (and other local servers) ignore the key but require the field
+    api_key = settings.openai_api_key if settings.llm_provider == "openai" else "ollama"
     return ChatOpenAI(
         model=settings.llm_model,
-        api_key=settings.openai_api_key,
+        api_key=api_key,
         base_url=settings.llm_base_url,
         temperature=settings.llm_temperature if temperature is None else temperature,
         max_tokens=settings.llm_max_tokens,
         streaming=streaming,
         max_retries=3,
     )
-
 @dataclass
 class CallRequest:
     text: str
@@ -34,7 +35,7 @@ class CallRequest:
 
 def invoke_tracked(prompt: str, *, system: str | None = None) -> CallRequest:
     settings = get_settings()
-    llm = get_llm()
+    llm = get_llm(treaming=True)
 
     messages = []
     if system:
