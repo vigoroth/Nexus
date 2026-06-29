@@ -7,13 +7,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
-
+import json
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.agent.graph import build_graph
 from app.web.conversations import (
     init_tables, create_conversation, list_conversations,
@@ -23,9 +23,17 @@ from app.web.conversations import (
 app = FastAPI(title="Nexus")
 
 # open a persistent checkpointer for per-conversation memory
-_checkpointer_cm = SqliteSaver.from_conn_string("data/web_memory.sqlite")
-CHECKPOINTER = _checkpointer_cm.__enter__()
-GRAPH = build_graph(checkpointer=CHECKPOINTER)
+_checkpointer_cm = AsyncSqliteSaver.from_conn_string("data/web_memory.sqlite")
+CHECKPOINTER = _checkpointer_cm.__aenter__()
+
+GRAPH = None
+
+async def get_graph():
+    global GRAPH, CHECKPOINTER
+    if GRAPH is None:
+        CHECKPOINTER = await _checkpointer_cm.__aenter__()
+        GRAPH = await build_graph(checkpointer=CHECKPOINTER)
+    return GRAPH
 
 init_tables()
 
@@ -68,16 +76,17 @@ async def chat(req: ChatRequest):
         yield {"event": "conversation", "data": conv_id}
 
         full_reply = ""
+        graph = await get_graph()
         config = {"configurable": {"thread_id": conv_id}}
-        for chunk, meta in GRAPH.stream(
+        async for chunk, meta in graph.astream(
             {"messages": [HumanMessage(content=req.message)]},
             stream_mode="messages",
             config=config,
         ):
             content = getattr(chunk, "content", None)
-            if content:
+            if content and isinstance(content, str):
                 full_reply += content
-                yield {"data": content}
+                yield {"data": json.dumps(content)}
 
         # save the complete assistant reply once streaming finishes
         add_message(conv_id, "assistant", full_reply)

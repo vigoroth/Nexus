@@ -1,0 +1,17 @@
+{
+  "fetch": {
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-fetch"]
+  },
+  "filesystem": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  },
+  "mempalace": {
+    "transport": "stdio",
+    "command": "mempalace-mcp",
+    "args": ["--palace", "/home/vigoroth/.mempalace"]
+  }
+}

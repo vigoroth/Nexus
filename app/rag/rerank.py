@@ -2,12 +2,12 @@
 the query and each chunk together. Runs locally, no API.
 """
 from functools import lru_cache
-
+from sentence_transformers import CrossEncoder
 
 @lru_cache
 def _get_reranker():
     # loaded once and cached; downloads the model on first use
-    from sentence_transformers import CrossEncoder
+
     return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 
