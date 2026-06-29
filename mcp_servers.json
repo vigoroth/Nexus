@@ -6,7 +6,7 @@
   },
   "filesystem": {
     "transport": "stdio",
-    "command": "npx",
+    "command": "/home/vigoroth/.nvm/versions/node/v22.23.1/bin/npx",
     "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
   },
   "mempalace": {

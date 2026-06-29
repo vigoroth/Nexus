@@ -1,9 +1,21 @@
-"""Load tools from configured MCP servers (config-driven, resilient)."""
+"""Load tools from configured MCP servers (config-driven, resilient, curated)."""
 import json
 from pathlib import Path
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "mcp_servers.json"
+
+# Curate which tools to keep per server. A server NOT listed here = keep all its tools.
+# A server listed here = keep only the named tools.
+MCP_TOOL_ALLOWLIST = {
+    "mempalace": {
+        "mempalace_search",
+        "mempalace_add_drawer",
+        "mempalace_kg_query",
+        "mempalace_kg_add",
+        "mempalace_status",
+    },
+}
 
 
 def _load_config() -> dict:
@@ -26,6 +38,10 @@ async def load_mcp_tools() -> list:
         try:
             client = MultiServerMCPClient({name: cfg})
             tools = await client.get_tools()
+            # apply allowlist if this server has one
+            allow = MCP_TOOL_ALLOWLIST.get(name)
+            if allow is not None:
+                tools = [t for t in tools if t.name in allow]
             print(f"MCP '{name}': loaded {len(tools)} tools")
             all_tools.extend(tools)
         except Exception as e:
