@@ -85,24 +85,3 @@ def get_messages(conversation_id: str) -> list[dict]:
     return [{"role": r[0], "content": r[1]} for r in rows]
 
 
-def main() -> None:
-    init_tables()
-    print("tables ready")
-
-    cid = create_conversation("How do I get a job through referrals?")
-    print("created conversation:", cid)
-
-    add_message(cid, "user", "How do I get a job through referrals?")
-    add_message(cid, "assistant", "Networking is key — most jobs come through referrals.")
-
-    print("\nconversations:")
-    for c in list_conversations():
-        print(" ", c["title"], "|", c["id"][:8])
-
-    print("\nmessages in that conversation:")
-    for m in get_messages(cid):
-        print(f"  [{m['role']}] {m['content'][:50]}")
-
-
-if __name__ == "__main__":
-    main()

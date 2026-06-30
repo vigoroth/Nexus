@@ -22,23 +22,47 @@ class CrossConvCase:
 
 
 CROSS_CONV_CASES = [
-    CrossConvCase(
-        name="x_recall_name",
-        store_turns=["Please remember that my name is Vigoroth. Save this to memory."],
-        recall_turn="What is my name? Check your memory.",
-        expect_any=["Vigoroth"],
+CrossConvCase(
+        name="x_recall_city",
+        store_turns=["Remember that I live in Athens, Greece. Save it to memory."],
+        recall_turn="What city do I live in? Check your memory.",
+        expect_any=["Athens"],
     ),
     CrossConvCase(
-        name="x_recall_goal",
-        store_turns=["Remember for later: I'm targeting ML engineering roles. Save it."],
-        recall_turn="What roles am I targeting? Look it up in memory.",
-        expect_any=["ML", "machine learning"],
+        name="x_recall_job",
+        store_turns=["Please remember: I work as a backend engineer. Save this."],
+        recall_turn="What is my job? Look it up in memory.",
+        expect_any=["backend", "engineer"],
     ),
     CrossConvCase(
-        name="x_recall_db_region",
-        store_turns=["Important to remember: my production database is in us-east-1. Save to memory."],
-        recall_turn="Which region is my production database in? Check memory.",
-        expect_any=["us-east-1", "east"],
+        name="x_recall_number",
+        store_turns=["Remember my employee ID is 48217. Save to memory."],
+        recall_turn="What is my employee ID? Check memory.",
+        expect_any=["48217"],
+    ),
+    CrossConvCase(
+        name="x_recall_language",
+        store_turns=["Remember that my native language is Greek. Save it."],
+        recall_turn="What is my native language? Check your memory.",
+        expect_any=["Greek"],
+    ),
+    CrossConvCase(
+        name="x_recall_project",
+        store_turns=["Important: my main project is called Nexus. Save this to memory."],
+        recall_turn="What is my main project called? Look in memory.",
+        expect_any=["Nexus"],
+    ),
+    CrossConvCase(
+        name="x_recall_tool",
+        store_turns=["Remember I use VS Code as my editor. Save to memory."],
+        recall_turn="What editor do I use? Check memory.",
+        expect_any=["VS Code", "VSCode", "Code"],
+    ),
+    CrossConvCase(
+        name="x_recall_pet",
+        store_turns=["Please remember my dog's name is Rex. Save this to memory."],
+        recall_turn="What is my dog's name? Check your memory.",
+        expect_any=["Rex"],
     ),
 ]
 

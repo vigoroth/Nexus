@@ -150,6 +150,16 @@ async def chat(req: ChatRequest):
                 full_reply += content
                 yield {"data": json.dumps(content)}
         add_message(conv_id, "assistant", full_reply)
+        # also write the whole conversation to the Obsidian vault
+        try:
+            from app.web.vault_writer import write_conversation
+            from app.web.conversations import list_conversations
+            msgs = get_messages(conv_id)
+            title = next((c["title"] for c in list_conversations()
+                          if c["id"] == conv_id), conv_id)
+            write_conversation(conv_id, title, msgs)
+        except Exception as e:
+            print(f"vault write skipped: {e}")
         yield {"event": "done", "data": ""}
 
     return EventSourceResponse(event_generator())

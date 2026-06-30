@@ -68,9 +68,9 @@ async def _run_cross_case(graph, case: CrossConvCase) -> tuple[bool, str, str]:
     return passed, reason, answer
 
 
-async def _report(title: str, cases: list, runner) -> None:
+async def _report(title: str, cases: list, runner, backend: str = "both") -> None:
     async with AsyncSqliteSaver.from_conn_string("data/eval_memory.sqlite") as cp:
-        graph = await build_graph(checkpointer=cp)
+        graph = await build_graph(checkpointer=cp, memory_backend=backend)
         passed = 0
         print(f"\n{title} ({len(cases)} cases)\n" + "=" * 50)
         for case in cases:
@@ -87,8 +87,9 @@ async def _report(title: str, cases: list, runner) -> None:
 
 def main() -> None:
     async def all_evals():
-        await _report("SINGLE-CONVERSATION MEMORY", MEMORY_CASES, _run_case)
-        await _report("CROSS-CONVERSATION MEMORY", CROSS_CONV_CASES, _run_cross_case)
+        # the comparison: identical cross-conversation cases, each memory backend
+        await _report("CROSS-CONV — POSTGRES", CROSS_CONV_CASES, _run_cross_case, "postgres")
+        await _report("CROSS-CONV — MEMPALACE", CROSS_CONV_CASES, _run_cross_case, "mempalace")
     asyncio.run(all_evals())
 
 

@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     openai_api_key: str
+    anthropic_api_key: str = ""
+    google_api_key: str = ""
     database_url: str = "postgresql+psycopg://claude:claude_dev_pw@localhost:5434/claude_desktop"
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
