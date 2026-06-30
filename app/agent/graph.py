@@ -42,12 +42,12 @@ cite the source numbers like [1], [2].
  for their personal facts use load_memory."""
 
 
-async def build_graph(checkpointer=None) -> StateGraph:
+async def build_graph(checkpointer=None, model: str | None = None, provider: str | None = None):
         """Build and compile the agent graph."""
         mcp_tools = await load_mcp_tools()
         # bind tools to the LLM so it knows what it can call
         all_tools =[search_documents, save_memory, load_memory, web_search, run_shell] + mcp_tools
-        llm = get_llm(streaming=True).bind_tools(all_tools)
+        llm = get_llm(streaming=True, model=model, provider=provider).bind_tools(all_tools)
 
         def llm_node(state: AgentState) -> dict:
             """Call the LLM with the current message history."""

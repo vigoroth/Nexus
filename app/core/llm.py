@@ -8,19 +8,59 @@ constructs a model or reads provider config. Swapping OpenAI <-> local is a
 
 from dataclasses import dataclass
 from langchain_openai import ChatOpenAI
+#from langchain_anthropic import ChatAnthropic
+#from langchain_google_genai import ChatGoogleGenerativeAI
 from app.core.config import get_settings
 from app.core.pricing import cost_usd
 from langchain_core.messages import SystemMessage, HumanMessage 
 
-def get_llm(*, streaming: bool = False, temperature: float | None = None) -> ChatOpenAI:
+def get_llm(streaming: bool = False, temperature: float = None,
+            model: str = None, provider: str = None):
     settings = get_settings()
-    # Ollama (and other local servers) ignore the key but require the field
-    api_key = settings.openai_api_key if settings.llm_provider == "openai" else "ollama"
+    provider = provider or settings.llm_provider
+    model = model or settings.llm_model
+    if not model or model == "default":
+        model = settings.llm_model
+    temp = temperature if temperature is not None else settings.llm_temperature
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model=model,
+            api_key=settings.anthropic_api_key,
+            temperature=temp,
+            max_tokens=settings.llm_max_tokens,
+            streaming=streaming,
+            max_retries=3,
+        )
+
+    if provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=model,
+            api_key=settings.google_api_key,
+            temperature=temp,
+            max_retries=3,
+        )
+    
+    if provider == "ollama":
+            return ChatOpenAI(
+                model=model,
+                api_key="ollama",
+                base_url="http://localhost:11434/v1",
+                temperature=temp,
+                max_tokens=settings.llm_max_tokens,
+                streaming=streaming,
+                max_retries=3,
+            )    
+
+    # existing OpenAI / Ollama path (provider == "openai" or "ollama")
+
     return ChatOpenAI(
-        model=settings.llm_model,
-        api_key=api_key,
+        model=model,
+        api_key=settings.openai_api_key if provider == "openai" else "ollama",
         base_url=settings.llm_base_url,
-        temperature=settings.llm_temperature if temperature is None else temperature,
+        temperature=temp,
         max_tokens=settings.llm_max_tokens,
         streaming=streaming,
         max_retries=3,
@@ -35,7 +75,7 @@ class CallRequest:
 
 def invoke_tracked(prompt: str, *, system: str | None = None) -> CallRequest:
     settings = get_settings()
-    llm = get_llm(treaming=True)
+    llm = get_llm(streaming=True)
 
     messages = []
     if system:

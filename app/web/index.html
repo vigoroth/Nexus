@@ -32,9 +32,11 @@
   .user { background: #2d2d2d; margin-left: 3rem; }
   .bot  { background: #262626; margin-right: 3rem; }
   #form { display: flex; padding: 1rem; gap: 0.5rem; border-top: 1px solid #2a2a2a;
-          max-width: 720px; margin: 0 auto; width: 100%; }
+          max-width: 720px; margin: 0 auto; width: 100%; align-items: center; }
   #input { flex: 1; padding: 0.75rem; border-radius: 8px; border: 1px solid #444;
            background: #222; color: #eee; font-size: 1rem; }
+  #modelPicker, #providerPicker { padding: 0.75rem; border-radius: 8px; border: 1px solid #444;
+                 background: #222; color: #eee; font-size: 0.85rem; max-width: 140px; }
   button#send { padding: 0.75rem 1.25rem; border-radius: 8px; border: none;
                 background: #d97757; color: white; cursor: pointer; font-size: 1rem; }
   button#send:disabled { opacity: 0.5; }
@@ -50,6 +52,12 @@
   <div id="main">
     <div id="chat"></div>
     <form id="form">
+      <select id="providerPicker">
+        <option value="">provider</option>
+      </select>
+      <select id="modelPicker">
+        <option value="">model</option>
+      </select>
       <input id="input" placeholder="Ask anything..." autocomplete="off" autofocus>
       <button type="submit" id="send">Send</button>
     </form>
@@ -62,6 +70,9 @@ const input = document.getElementById("input");
 const send = document.getElementById("send");
 const convlist = document.getElementById("convlist");
 const newchat = document.getElementById("newchat");
+const modelPicker = document.getElementById("modelPicker");
+const providerPicker = document.getElementById("providerPicker");
+let MODELS_BY_PROVIDER = {};
 
 let currentConvId = null;
 
@@ -73,6 +84,38 @@ function addMsg(text, cls) {
   chat.scrollTop = chat.scrollHeight;
   return div;
 }
+
+// populate the model dropdown from the live /models endpoint
+// fetch models, fill the provider dropdown, and wire provider->model repopulation
+async function loadModels() {
+  try {
+    const resp = await fetch("/models");
+    MODELS_BY_PROVIDER = await resp.json();   // {openai:[...], ollama:[...]}
+    providerPicker.innerHTML = '<option value="">provider</option>';
+    for (const provider of Object.keys(MODELS_BY_PROVIDER)) {
+      const opt = document.createElement("option");
+      opt.value = provider;
+      opt.textContent = provider;
+      providerPicker.appendChild(opt);
+    }
+  } catch (e) {
+    console.error("model list failed", e);
+  }
+}
+
+// when provider changes, repopulate the model dropdown
+function fillModels() {
+  const provider = providerPicker.value;
+  modelPicker.innerHTML = '<option value="">model</option>';
+  const models = MODELS_BY_PROVIDER[provider] || [];
+  for (const m of models) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    modelPicker.appendChild(opt);
+  }
+}
+providerPicker.addEventListener("change", fillModels);
 
 // load the sidebar list
 async function loadConversations() {
@@ -121,7 +164,11 @@ form.addEventListener("submit", async (e) => {
   const resp = await fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: currentConvId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: currentConvId,
+      model: modelPicker.value || null,
+    }),
   });
 
   const reader = resp.body.getReader();
@@ -144,11 +191,11 @@ form.addEventListener("submit", async (e) => {
         if (line.startsWith("data:")) data += line.slice(5).replace(/^ /, "");
       }
       if (event === "conversation") {
-        currentConvId = data;          // backend told us the new id
+        currentConvId = data;
       } else if (event === "done") {
         // finished
       } else if (data) {
-        botDiv.textContent += data;    // a streamed token chunk
+        botDiv.textContent += JSON.parse(data);
         chat.scrollTop = chat.scrollHeight;
       }
     }
@@ -156,10 +203,11 @@ form.addEventListener("submit", async (e) => {
 
   send.disabled = false;
   input.focus();
-  loadConversations();  // refresh sidebar (new chat appears / moves to top)
+  loadConversations();
 });
 
 // initial load
+loadModels();
 loadConversations();
 </script>
 </body>
