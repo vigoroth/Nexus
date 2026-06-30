@@ -1,8 +1,8 @@
 # Nexus
 
-A self-hosted, local-first AI agent workspace built from scratch — tool-using agents, advanced retrieval-augmented generation (RAG), persistent memory, web search, **Model Context Protocol (MCP) integration**, full observability, and a streaming chat UI with conversation history. Runs on OpenAI or fully offline on local models.
+A self-hosted, local-first AI agent workspace built from scratch — tool-using agents, advanced retrieval-augmented generation (RAG), persistent memory, web search, Model Context Protocol (MCP) integration, multi-provider model selection, a password-protected streaming chat UI, an evaluation harness, and full observability. Runs on cloud models (OpenAI) or fully offline on local models (Ollama).
 
-**Version 1.2**
+**Version 1.3**
 
 ---
 
@@ -10,13 +10,13 @@ A self-hosted, local-first AI agent workspace built from scratch — tool-using 
 
 Nexus is an autonomous AI agent that can:
 
-- **Reason and act in a loop** — a LangGraph ReAct agent that decides when to call tools, reads the results, and continues until it can answer.
-- **Connect to the MCP ecosystem** — integrates external Model Context Protocol servers (filesystem, web fetch, MemPalace memory) alongside its own tools, all through one async agent loop.
-- **Operate on your system** — run shell commands, and read/write/search files via the MCP filesystem server.
+- **Reason and act in a loop** — a LangGraph ReAct agent (fully async) that decides when to call tools, reads the results, and continues until it can answer.
+- **Switch models and providers from the UI** — pick a provider (OpenAI or Ollama) and a specific model per conversation from a two-step selector; the model list is fetched live from each provider, never hardcoded. Anthropic and Google Gemini are wired and activate when their API keys are added.
+- **Connect to the MCP ecosystem** — integrates external Model Context Protocol servers (filesystem, web fetch, MemPalace memory) alongside its own tools, all through one async agent loop. Tools are curated to keep selection sharp.
 - **Search and fetch the web** — `web_search` (DuckDuckGo, no API key) to find pages; the MCP `fetch` server to read a specific URL.
 - **Answer from your own documents** — advanced RAG: hybrid search (semantic + keyword), Reciprocal Rank Fusion, cross-encoder reranking, and LLM query expansion, with citations.
-- **Remember you** — short-term conversation memory (per thread), long-term memory (Postgres), plus an optional local knowledge-graph memory via the MemPalace MCP server.
-- **Run locally or in the cloud** — OpenAI-compatible provider layer; switch OpenAI ⇄ Ollama with one config change.
+- **Remember you** — short-term conversation memory (per thread), long-term memory (Postgres), plus a local knowledge-graph memory via the MemPalace MCP server. Memory is verified by an eval harness.
+- **Be protected** — the web UI sits behind a username + password login gate (bcrypt-hashed credentials, signed session cookies).
 - **Monitor itself** — every run records latency, tokens, cost, and success to Postgres, surfaced in Grafana.
 - **Chat like a real app** — streaming web UI with a conversation sidebar; past chats persist and reopen.
 
@@ -26,14 +26,16 @@ Nexus is an autonomous AI agent that can:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Web UI (async streaming chat + conversation sidebar)     │
-│     FastAPI · SSE token streaming · async throughout      │
+│  Web UI (login-gated streaming chat + conversation list)  │
+│     FastAPI · SSE streaming · provider/model selector     │
+│     bcrypt auth + signed session cookies                  │
 ├──────────────────────────────────────────────────────────┤
 │  Agent core (async LangGraph ReAct loop)                  │
-│     ├─ LLM provider layer (OpenAI ⇄ Ollama)               │
+│     ├─ Provider layer: OpenAI · Ollama · Anthropic ·      │
+│     │                   Gemini (per-request selectable)   │
 │     ├─ Built-in tools: shell · web search                 │
 │     │                  · document search (RAG) · memory   │
-│     └─ MCP tools (loaded at startup, config-driven)       │
+│     └─ MCP tools (config-driven, curated allowlist)       │
 ├──────────────────────────────────────────────────────────┤
 │  MCP servers (stdio subprocesses)                         │
 │     ├─ fetch        — read web pages                      │
@@ -44,7 +46,10 @@ Nexus is an autonomous AI agent that can:
 │                → cross-encoder rerank → cite              │
 ├──────────────────────────────────────────────────────────┤
 │  Memory: short-term (async SQLite checkpointer)           │
-│          long-term (Postgres) · MemPalace (MCP, optional) │
+│          long-term (Postgres) · MemPalace (MCP)           │
+├──────────────────────────────────────────────────────────┤
+│  Eval harness: single + cross-conversation memory tests   │
+│                with per-case timeouts                     │
 ├──────────────────────────────────────────────────────────┤
 │  Observability: per-run metrics → Postgres → Grafana      │
 ├──────────────────────────────────────────────────────────┤
@@ -54,33 +59,38 @@ Nexus is an autonomous AI agent that can:
 
 ---
 
-## MCP integration
+## Multi-provider model selection
 
-Nexus connects to external [Model Context Protocol](https://modelcontextprotocol.io) servers and exposes their tools to the agent alongside its own. Servers are declared in `mcp_servers.json` at the project root — adding one is a config edit, not a code change:
+Nexus abstracts every model behind a single provider layer (`get_llm`). The web UI exposes this as a two-step selector: choose a **provider**, then a **model** from that provider's live-fetched list.
 
-```json
-{
-  "fetch": {
-    "transport": "stdio",
-    "command": "uvx",
-    "args": ["mcp-server-fetch"]
-  },
-  "filesystem": {
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-  },
-  "mempalace": {
-    "transport": "stdio",
-    "command": "mempalace-mcp",
-    "args": ["--palace", "/path/to/palace"]
-  }
-}
-```
+- **OpenAI** — models queried from the OpenAI API, filtered to chat-capable models.
+- **Ollama** — models queried from the local Ollama daemon (`/api/tags`); fully offline.
+- **Anthropic / Gemini** — provider branches are implemented and activate once `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` are set.
 
-Tools are loaded at startup via `langchain-mcp-adapters`, which converts MCP tools into LangChain tools the agent loop uses natively. Loading is **resilient** — each server is loaded independently, so one failing server doesn't disable the others. Integrating MCP required making the entire request pipeline async (graph construction, streaming, and the SQLite checkpointer all use their async variants).
+The selection flows per-request through the agent graph, which is cached per provider+model so switching is cheap. Provider and model are decoupled from `.env` — the UI choice overrides the default.
 
-Requirements for MCP: Node.js 20+ (for `npx`-based servers), [`uv`](https://github.com/astral-sh/uv) (for `uvx`-based servers).
+---
+
+## Authentication
+
+The web UI is protected by a single-user login gate:
+
+- Username checked in constant time; password verified against a **bcrypt hash** (never stored in plaintext).
+- Sessions use **signed, time-limited cookies** (itsdangerous), httponly.
+- All API routes require a valid session; unauthenticated requests are rejected.
+
+Credentials live in `.env` (`NEXUS_USERNAME`, `NEXUS_PASSWORD_HASH`, `NEXUS_SESSION_SECRET`) — only the hash is stored, so the password is never recoverable from disk.
+
+---
+
+## Evaluation harness
+
+Memory is measured, not assumed. The eval harness (`app/eval/`) runs:
+
+- **Single-conversation recall** — a fact stated and recalled within one thread (checkpointer memory).
+- **Cross-conversation recall** — a fact saved in one conversation and recalled in a separate one (long-term Postgres memory).
+
+Each case has a per-case timeout so a stuck run fails cleanly rather than hanging. The current Postgres-memory baseline passes all cases (8/8). The harness is the basis for benchmarking memory backends (e.g. Postgres vs. MemPalace) against each other.
 
 ---
 
@@ -90,13 +100,14 @@ Requirements for MCP: Node.js 20+ (for `npx`-based servers), [`uv`](https://gith
 |-------|--------|
 | Language | Python 3.11 |
 | Agent framework | LangChain + LangGraph (async) |
-| MCP | langchain-mcp-adapters (fetch, filesystem, MemPalace servers) |
-| LLM (cloud / local) | OpenAI `gpt-4o-mini` / Ollama `qwen3` |
+| Providers | OpenAI · Ollama · Anthropic · Google Gemini (via a unified provider layer) |
+| MCP | langchain-mcp-adapters (fetch, filesystem, MemPalace) |
 | Vector store | Postgres + pgvector |
 | Retrieval | Hybrid (pgvector + Postgres FTS) + RRF + cross-encoder rerank + query expansion |
 | Web search | DuckDuckGo (`ddgs`) |
-| Memory | LangGraph async SQLite checkpointer (short) · Postgres (long) · MemPalace (MCP, optional) |
+| Memory | LangGraph async SQLite checkpointer (short) · Postgres (long) · MemPalace (MCP) |
 | Web backend | FastAPI + SSE (async) |
+| Auth | bcrypt + itsdangerous signed cookies |
 | Observability | Custom metrics → Postgres → Grafana |
 | Infrastructure | Docker Compose |
 
@@ -115,13 +126,26 @@ git clone https://github.com/vigoroth/Nexus.git
 cd Nexus
 conda create -n nexus python=3.11 -y
 conda activate nexus
-pip install langchain langchain-openai langgraph langchain-core \
-            langgraph-checkpoint-sqlite aiosqlite langchain-postgres \
-            langchain-community langchain-experimental "psycopg[binary]" \
-            pypdf pydantic pydantic-settings python-dotenv tiktoken openai \
-            ddgs sentence-transformers fastapi "uvicorn[standard]" sse-starlette \
-            langchain-mcp-adapters
-cp .env.example .env   # add OPENAI_API_KEY (or configure Ollama)
+pip install langchain langchain-openai langchain-anthropic langchain-google-genai \
+            langgraph langchain-core langgraph-checkpoint-sqlite aiosqlite \
+            langchain-postgres langchain-community langchain-experimental \
+            "psycopg[binary]" pypdf pydantic pydantic-settings python-dotenv \
+            tiktoken openai ddgs sentence-transformers fastapi "uvicorn[standard]" \
+            sse-starlette langchain-mcp-adapters bcrypt itsdangerous httpx
+cp .env.example .env
+```
+
+### Configure `.env`
+```
+OPENAI_API_KEY=sk-...
+DATABASE_URL=postgresql+psycopg://claude:claude_dev_pw@localhost:5434/claude_desktop
+# auth
+NEXUS_USERNAME=your-name
+NEXUS_PASSWORD_HASH=<bcrypt hash>      # python -c "import bcrypt;print(bcrypt.hashpw(b'pw',bcrypt.gensalt()).decode())"
+NEXUS_SESSION_SECRET=<random hex>      # python -c "import secrets;print(secrets.token_hex(32))"
+# optional providers
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
 ```
 
 ### Infrastructure
@@ -140,18 +164,18 @@ CREATE INDEX IF NOT EXISTS idx_fts ON langchain_pg_embedding USING GIN (fts);
 
 ### MCP servers (optional but recommended)
 ```bash
-# fetch + filesystem need no install (npx/uvx fetch on first use)
-# MemPalace memory server:
+# fetch + filesystem need no install (uvx/npx fetch on first use)
 uv tool install mempalace
 mkdir -p ~/.mempalace
 mempalace init ~/.mempalace --yes --no-llm
-# then add the servers to mcp_servers.json (see MCP integration section)
+# servers are declared in mcp_servers.json (use absolute npx path for filesystem under WSL)
 ```
 
 ### Run
 ```bash
 python -m app.rag.ingest_demo      # ingest a document
-python -m app.web.server           # launch chat UI at http://localhost:8000
+python -m app.eval.runner          # run the memory eval harness
+python -m app.web.server           # launch chat UI at http://localhost:8000 (login required)
 ```
 
 ---
@@ -161,21 +185,25 @@ python -m app.web.server           # launch chat UI at http://localhost:8000
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3:8b
-ollama create qwen3-agent -f Modelfile.qwen   # larger context for agent loops
 ```
-Then in `.env`: `LLM_PROVIDER=ollama`, `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=qwen3-agent`. No code changes.
+Then in the UI, pick **Ollama** as the provider and select the model. No code or `.env` changes needed — the selector routes to the local daemon automatically.
 
 ---
 
 ## Roadmap
 
 - [x] MCP integration (fetch, filesystem, MemPalace)
-- [ ] Tool curation (manage tool count for reliable selection)
-- [ ] Obsidian vault as an MCP knowledge base
-- [ ] Eval harness (benchmark memory approaches against LongMemEval)
+- [x] Tool curation (allowlist to keep selection reliable)
+- [x] Multi-provider support + per-conversation model selector
+- [x] Login gate (bcrypt + signed sessions)
+- [x] Eval harness (single + cross-conversation memory)
+- [ ] Benchmark MemPalace vs. Postgres memory (using the eval harness)
+- [ ] Auto-memory: remember conversations and recall context automatically
+- [ ] Obsidian vault as an MCP knowledge source
+- [ ] Encrypted API-key dashboard (write-only, login-gated)
+- [ ] Activity log (surface tool calls / retrievals / memory ops live)
 - [ ] Conversation summarization for long threads
 - [ ] Containerize the app itself (one-command full stack)
-- [ ] UI polish (model picker, markdown rendering, citations as links)
 
 ---
 
