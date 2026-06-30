@@ -37,23 +37,63 @@ cite the source numbers like [1], [2].
 -To retrieve the full contents of a specific URL or web page, use the fetch tool.
     Use web_search to find pages; use fetch to read a known URL.
 
--For current events, recent news, prices, or facts that may have changed, 
- use web_search. For the user's own documents use search_documents; 
- for their personal facts use load_memory."""
+-For current events, recent news, prices, or facts that may have changed,
+ use web_search. For the user's own documents use search_documents.
+
+-MEMORY — THIS IS A STANDING INSTRUCTION, NOT OPTIONAL:
+The MOMENT the user states any personal fact about themselves — name, location,
+job, a pet, a preference, a project, a relationship, a goal, a date, anything
+they'd expect you to recall later — you MUST call save_memory immediately,
+BEFORE or ALONGSIDE your conversational reply. This applies even when the fact
+is mentioned casually, in passing, or as an aside ("by the way...", "I just...").
+Casual phrasing does NOT mean it's unimportant. Saving is part of every response,
+not a separate task you choose to do.
+
+Use a short snake_case key and the exact value, e.g.
+save_memory(key="pet_cat", value="Mochi") for "I adopted a cat named Mochi".
+
+Do NOT save one-off task details, trivia, or anything not about the user.
+The facts you already know are listed below — don't re-save those."""
 
 
-async def build_graph(checkpointer=None, model: str | None = None, provider: str | None = None):
-        """Build and compile the agent graph."""
+async def build_graph(checkpointer=None, model: str | None = None,
+                      provider: str | None = None,
+                      memory_backend: str = "both"):
+        """memory_backend: 'postgres' | 'mempalace' | 'both'"""
         mcp_tools = await load_mcp_tools()
-        # bind tools to the LLM so it knows what it can call
-        all_tools =[search_documents, save_memory, load_memory, web_search, run_shell] + mcp_tools
+
+        # split MCP tools: separate MemPalace memory tools from the rest
+        mempalace_mem = [t for t in mcp_tools if t.name in
+                        ("mempalace_add_drawer", "mempalace_search")]
+        other_mcp = [t for t in mcp_tools if not t.name.startswith("mempalace_")]
+        mempalace_other = [t for t in mcp_tools
+                        if t.name.startswith("mempalace_") and t not in mempalace_mem]
+
+        # base tools (always present)
+        base = [search_documents, web_search, run_shell] + other_mcp + mempalace_other
+
+        # memory tools depend on the backend under test
+        if memory_backend == "postgres":
+            mem_tools = [save_memory, load_memory]
+        elif memory_backend == "mempalace":
+            mem_tools = mempalace_mem
+        else:  # both (normal operation)
+            mem_tools = [save_memory, load_memory] + mempalace_mem
+
+        all_tools = base + mem_tools
         llm = get_llm(streaming=True, model=model, provider=provider).bind_tools(all_tools)
 
         def llm_node(state: AgentState) -> dict:
-            """Call the LLM with the current message history."""
-            messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
-            response = llm.invoke(messages)
-            return {"messages": [response]}
+                from app.memory.long_term import recall_all
+                facts = recall_all()
+                prompt = SYSTEM_PROMPT
+                if facts:
+                    known = "\n".join(f"- {k}: {v}" for k, v in facts.items())
+                    prompt += f"\n\nHere is what you already know about the user:\n{known}\n" \
+                            "Use these facts naturally when relevant. You do not need to look them up."
+                messages = [SystemMessage(content=prompt)] + state["messages"]
+                response = llm.invoke(messages)
+                return {"messages": [response]}
 
         def should_continue(state: AgentState) -> str:
             """Decide: loop back to tools, or stop and return the answer."""
