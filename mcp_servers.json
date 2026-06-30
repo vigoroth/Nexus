@@ -6,8 +6,8 @@
   },
   "filesystem": {
     "transport": "stdio",
-    "command": "/home/vigoroth/.nvm/versions/node/v22.23.1/bin/npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    "command": "/home/vigoroth/.nvm/versions/node/v22.23.1/bin/node",
+    "args": ["/home/vigoroth/.nvm/versions/node/v22.23.1/lib/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js", "/tmp"]
   },
   "mempalace": {
     "transport": "stdio",
