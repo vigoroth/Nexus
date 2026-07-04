@@ -227,6 +227,12 @@ Then in the UI, pick **Ollama** as the provider and select the model. No code or
 
 ---
 
+## Contributors
+
+- [Nick.Kantiotis](https://github.com/vigoroth) — sole author/contributor
+
+---
+
 ## License
 
 MIT

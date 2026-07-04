@@ -9,3 +9,4 @@ data/
 *.sqlite-shm
 *.sqlite-wal
 *:Zone.Identifier
+Screenshot*.png
