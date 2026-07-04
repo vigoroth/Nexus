@@ -8,6 +8,7 @@ from app.agent.state import AgentState
 from app.core.llm import get_llm
 from app.tools.os_tools import OS_TOOLS
 from app.tools.rag_tool import search_documents
+from app.tools.graph_query import graph_query
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.tools.memory_tools import save_memory, load_memory
 from dotenv import load_dotenv
@@ -27,6 +28,8 @@ Tool selection rules:
   ingested knowledge base, not the filesystem.
 - Use read_file / list_dir / run_shell only for actual filesystem paths the
   user explicitly names.
+- To recall earlier conversations, topics discussed before, or how the user's
+  past context connects, use graph_query (the knowledge graph over past chats).
 
 - To read the full contents of a specific web page or URL, use the fetch tool (it retrieves and extracts page content as markdown).
  Use web_search to find pages by topic; use fetch to read a URL you already have.
@@ -58,30 +61,34 @@ The facts you already know are listed below — don't re-save those."""
 
 async def build_graph(checkpointer=None, model: str | None = None,
                       provider: str | None = None,
-                      memory_backend: str = "both"):
-        """memory_backend: 'postgres' | 'mempalace' | 'both'"""
-        mcp_tools = await load_mcp_tools()
+                      memory_backend: str = "both",
+                      plain: bool = False):
+        """memory_backend: 'postgres' | 'both' — toggles the Postgres long-term
+        memory tools. Graph memory comes from the Obsidian vault + graphify
+        knowledge graph via the native graph_query tool (see app.tools.graph_query).
+        plain=True → no tools bound at all (UI 'Chat' mode: direct LLM answer,
+        still with conversation memory + known facts injected)."""
+        if plain:
+            all_tools = []
+        else:
+            mcp_tools = await load_mcp_tools()
 
-        # split MCP tools: separate MemPalace memory tools from the rest
-        mempalace_mem = [t for t in mcp_tools if t.name in
-                        ("mempalace_add_drawer", "mempalace_search")]
-        other_mcp = [t for t in mcp_tools if not t.name.startswith("mempalace_")]
-        mempalace_other = [t for t in mcp_tools
-                        if t.name.startswith("mempalace_") and t not in mempalace_mem]
+            # all MCP tools (fetch, filesystem, ...) flow through as-is
+            other_mcp = mcp_tools
 
-        # base tools (always present)
-        base = [search_documents, web_search, run_shell] + other_mcp + mempalace_other
+            # base tools (always present)
+            base = [search_documents, web_search, run_shell, graph_query] + other_mcp
 
-        # memory tools depend on the backend under test
-        if memory_backend == "postgres":
-            mem_tools = [save_memory, load_memory]
-        elif memory_backend == "mempalace":
-            mem_tools = mempalace_mem
-        else:  # both (normal operation)
-            mem_tools = [save_memory, load_memory] + mempalace_mem
+            # Postgres long-term memory tools (kept toggleable for backend experiments)
+            if memory_backend == "postgres":
+                mem_tools = [save_memory, load_memory]
+            else:  # both (normal operation)
+                mem_tools = [save_memory, load_memory]
 
-        all_tools = base + mem_tools
-        llm = get_llm(streaming=True, model=model, provider=provider).bind_tools(all_tools)
+            all_tools = base + mem_tools
+        llm = get_llm(streaming=True, model=model, provider=provider)
+        if all_tools:
+            llm = llm.bind_tools(all_tools)
         
         def llm_node(state: AgentState) -> dict:
                     from app.memory.long_term import recall_all
@@ -116,23 +123,21 @@ async def build_graph(checkpointer=None, model: str | None = None,
                 return "tools"
             return "end"
 
-        # ToolNode handles running the actual tool functions and
-        # returning ToolMessage results back into state
-        tool_node = ToolNode(all_tools)
-
         graph = StateGraph(AgentState)
-
         graph.add_node("llm", llm_node)
-        graph.add_node("tools", tool_node)
-
         graph.add_edge(START, "llm")
 
-        graph.add_conditional_edges(
-            "llm",
-            should_continue,
-            {"tools": "tools", "end": END},
-        )
-
-        graph.add_edge("tools", "llm")
+        if all_tools:
+            # ToolNode handles running the actual tool functions and
+            # returning ToolMessage results back into state
+            graph.add_node("tools", ToolNode(all_tools))
+            graph.add_conditional_edges(
+                "llm",
+                should_continue,
+                {"tools": "tools", "end": END},
+            )
+            graph.add_edge("tools", "llm")
+        else:  # plain chat: one LLM turn, no tool loop
+            graph.add_edge("llm", END)
 
         return graph.compile(checkpointer=checkpointer)

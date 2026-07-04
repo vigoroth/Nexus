@@ -2,62 +2,71 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexus</title>
+<!--
+  Fallback UI, served only when app/web/frontend/dist hasn't been built yet
+  (see server.py:index). The real UI is the React app in app/web/frontend —
+  build it with `npm run build` for the full Chat/Brain/Stats/Terminal experience.
+-->
 <style>
+  :root {
+    --bg: #0e0f12; --panel-solid: #181a1f; --border: rgba(255,255,255,0.08);
+    --border-2: rgba(255,255,255,0.14); --text: #e9e7e3; --text-dim: #9a978f;
+    --accent: #d97757; --accent-2: #e59a7f; --radius: 14px;
+  }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; margin: 0; background: #1a1a1a;
-         color: #e8e8e8; display: flex; height: 100vh; }
-
-  /* sidebar */
-  #sidebar { width: 260px; background: #141414; border-right: 1px solid #2a2a2a;
-             display: flex; flex-direction: column; }
-  #sidebar h2 { font-size: 1rem; padding: 1rem; margin: 0; color: #d97757; }
-  #newchat { margin: 0 1rem 1rem; padding: 0.6rem; border-radius: 8px;
-             border: 1px solid #d97757; background: transparent; color: #d97757;
-             cursor: pointer; font-size: 0.9rem; }
-  #newchat:hover { background: #d97757; color: #fff; }
-  #convlist { flex: 1; overflow-y: auto; }
-  .conv { padding: 0.6rem 1rem; cursor: pointer; font-size: 0.85rem;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-          border-left: 3px solid transparent; }
-  .conv:hover { background: #222; }
-  .conv.active { background: #262626; border-left-color: #d97757; }
-
-  /* main chat */
-  #main { flex: 1; display: flex; flex-direction: column; }
-  #chat { flex: 1; overflow-y: auto; padding: 1rem; max-width: 720px;
+  html, body { height: 100%; }
+  body {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    margin: 0; color: var(--text); background: var(--bg);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  #sidebar { width: 240px; flex-shrink: 0; display: flex; flex-direction: column;
+             background: var(--panel-solid); border-right: 1px solid var(--border); }
+  .brand { padding: 20px; font-size: 1.05rem; font-weight: 650; color: var(--accent); }
+  #newchat { margin: 0 16px 14px; padding: 0.6rem; border-radius: 10px;
+             border: 1px solid var(--border-2); background: transparent;
+             color: var(--text); cursor: pointer; }
+  #newchat:hover { border-color: var(--accent); color: var(--accent-2); }
+  #convlist { flex: 1; overflow-y: auto; padding: 0 10px 12px; }
+  .conv { padding: 0.5rem 0.7rem; margin: 1px 0; border-radius: 9px; cursor: pointer;
+          font-size: 0.85rem; color: var(--text-dim); white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis; }
+  .conv:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .conv.active { background: rgba(217,119,87,0.14); color: var(--text); }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .notice { text-align: center; font-size: 0.75rem; color: var(--text-dim);
+            padding: 6px; border-bottom: 1px solid var(--border); }
+  #chat { flex: 1; overflow-y: auto; padding: 24px 16px; max-width: 780px;
           margin: 0 auto; width: 100%; }
-  .msg { margin: 0.75rem 0; padding: 0.75rem 1rem; border-radius: 12px;
-         white-space: pre-wrap; line-height: 1.5; }
-  .user { background: #2d2d2d; margin-left: 3rem; }
-  .bot  { background: #262626; margin-right: 3rem; }
-  #form { display: flex; padding: 1rem; gap: 0.5rem; border-top: 1px solid #2a2a2a;
-          max-width: 720px; margin: 0 auto; width: 100%; align-items: center; }
-  #input { flex: 1; padding: 0.75rem; border-radius: 8px; border: 1px solid #444;
-           background: #222; color: #eee; font-size: 1rem; }
-  #modelPicker, #providerPicker { padding: 0.75rem; border-radius: 8px; border: 1px solid #444;
-                 background: #222; color: #eee; font-size: 0.85rem; max-width: 140px; }
-  button#send { padding: 0.75rem 1.25rem; border-radius: 8px; border: none;
-                background: #d97757; color: white; cursor: pointer; font-size: 1rem; }
+  .msg { margin: 14px 0; padding: 0.85rem 1.1rem; border-radius: var(--radius);
+         white-space: pre-wrap; line-height: 1.6; font-size: 0.95rem; }
+  .user { background: rgba(217,119,87,0.16); border: 1px solid rgba(217,119,87,0.25);
+          margin-left: 3.5rem; }
+  .bot  { background: var(--panel-solid); border: 1px solid var(--border); margin-right: 3.5rem; }
+  #activity { max-width: 780px; margin: 0 auto; width: 100%; padding: 0 1.1rem;
+              font-size: 0.78rem; color: var(--text-dim); min-height: 1.3rem; font-style: italic; }
+  #form { display: flex; padding: 14px 16px 18px; gap: 0.5rem;
+          max-width: 780px; margin: 0 auto; width: 100%; }
+  #input { flex: 1; padding: 0.8rem 1rem; border-radius: 12px; border: 1px solid var(--border-2);
+           background: rgba(255,255,255,0.03); color: var(--text); font-size: 1rem; outline: none; }
+  button#send { padding: 0.8rem 1.3rem; border-radius: 12px; border: none; font-weight: 600;
+                background: var(--accent); color: #fff; cursor: pointer; }
   button#send:disabled { opacity: 0.5; }
 </style>
 </head>
 <body>
   <div id="sidebar">
-    <h2>Nexus</h2>
+    <div class="brand">Nexus</div>
     <button id="newchat">+ New chat</button>
     <div id="convlist"></div>
   </div>
-
   <div id="main">
+    <div class="notice">Fallback UI — run `npm run build` in app/web/frontend for the full app</div>
     <div id="chat"></div>
+    <div id="activity"></div>
     <form id="form">
-      <select id="providerPicker">
-        <option value="">provider</option>
-      </select>
-      <select id="modelPicker">
-        <option value="">model</option>
-      </select>
       <input id="input" placeholder="Ask anything..." autocomplete="off" autofocus>
       <button type="submit" id="send">Send</button>
     </form>
@@ -70,10 +79,6 @@ const input = document.getElementById("input");
 const send = document.getElementById("send");
 const convlist = document.getElementById("convlist");
 const newchat = document.getElementById("newchat");
-const modelPicker = document.getElementById("modelPicker");
-const providerPicker = document.getElementById("providerPicker");
-let MODELS_BY_PROVIDER = {};
-
 let currentConvId = null;
 
 function addMsg(text, cls) {
@@ -85,42 +90,8 @@ function addMsg(text, cls) {
   return div;
 }
 
-// populate the model dropdown from the live /models endpoint
-// fetch models, fill the provider dropdown, and wire provider->model repopulation
-async function loadModels() {
-  try {
-    const resp = await fetch("/models");
-    MODELS_BY_PROVIDER = await resp.json();   // {openai:[...], ollama:[...]}
-    providerPicker.innerHTML = '<option value="">provider</option>';
-    for (const provider of Object.keys(MODELS_BY_PROVIDER)) {
-      const opt = document.createElement("option");
-      opt.value = provider;
-      opt.textContent = provider;
-      providerPicker.appendChild(opt);
-    }
-  } catch (e) {
-    console.error("model list failed", e);
-  }
-}
-
-// when provider changes, repopulate the model dropdown
-function fillModels() {
-  const provider = providerPicker.value;
-  modelPicker.innerHTML = '<option value="">model</option>';
-  const models = MODELS_BY_PROVIDER[provider] || [];
-  for (const m of models) {
-    const opt = document.createElement("option");
-    opt.value = m;
-    opt.textContent = m;
-    modelPicker.appendChild(opt);
-  }
-}
-providerPicker.addEventListener("change", fillModels);
-
-// load the sidebar list
 async function loadConversations() {
-  const resp = await fetch("/conversations");
-  const convs = await resp.json();
+  const convs = await (await fetch("/conversations")).json();
   convlist.innerHTML = "";
   for (const c of convs) {
     const div = document.createElement("div");
@@ -131,19 +102,14 @@ async function loadConversations() {
   }
 }
 
-// load one conversation's messages into the chat area
 async function openConversation(id) {
   currentConvId = id;
-  const resp = await fetch("/conversations/" + id);
-  const messages = await resp.json();
+  const messages = await (await fetch("/conversations/" + id)).json();
   chat.innerHTML = "";
-  for (const m of messages) {
-    addMsg(m.content, m.role === "user" ? "user" : "bot");
-  }
-  loadConversations();  // refresh active highlight
+  for (const m of messages) addMsg(m.content, m.role === "user" ? "user" : "bot");
+  loadConversations();
 }
 
-// start a fresh chat
 newchat.onclick = () => {
   currentConvId = null;
   chat.innerHTML = "";
@@ -160,54 +126,43 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   send.disabled = true;
   const botDiv = addMsg("", "bot");
+  const act = document.getElementById("activity");
 
   const resp = await fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      conversation_id: currentConvId,
-      model: modelPicker.value || null,
-    }),
+    body: JSON.stringify({ message, conversation_id: currentConvId }),
   });
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-
-    // SSE frames are separated by blank lines
     const frames = buffer.split("\n\n");
-    buffer = frames.pop();  // keep incomplete frame in buffer
-
+    buffer = frames.pop();
     for (const frame of frames) {
       let event = "message", data = "";
       for (const line of frame.split("\n")) {
         if (line.startsWith("event:")) event = line.slice(6).trim();
         if (line.startsWith("data:")) data += line.slice(5).replace(/^ /, "");
       }
-      if (event === "conversation") {
-        currentConvId = data;
-      } else if (event === "done") {
-        // finished
-      } else if (data) {
+      if (event === "conversation") currentConvId = data;
+      else if (event === "activity") act.textContent = "⚙️ " + JSON.parse(data);
+      else if (event === "done") act.textContent = "";
+      else if (data) {
         botDiv.textContent += JSON.parse(data);
         chat.scrollTop = chat.scrollHeight;
       }
     }
   }
-
   send.disabled = false;
   input.focus();
   loadConversations();
 });
 
-// initial load
-loadModels();
 loadConversations();
 </script>
 </body>

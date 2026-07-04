@@ -7,15 +7,9 @@ CONFIG_PATH = Path(__file__).parent.parent.parent / "mcp_servers.json"
 
 # Curate which tools to keep per server. A server NOT listed here = keep all its tools.
 # A server listed here = keep only the named tools.
-MCP_TOOL_ALLOWLIST = {
-    "mempalace": {
-        "mempalace_search",
-        "mempalace_add_drawer",
-        "mempalace_kg_query",
-        "mempalace_kg_add",
-        "mempalace_status",
-    },
-}
+# graphify is intentionally unlisted for now (keep all its tools); curate once the
+# graph knowledge-query tool names are confirmed from a first load.
+MCP_TOOL_ALLOWLIST = {}
 
 
 def _load_config() -> dict:

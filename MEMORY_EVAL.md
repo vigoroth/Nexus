@@ -1,5 +1,11 @@
 # Memory Backend Evaluation: Postgres vs. MemPalace
 
+> **Historical.** MemPalace has since been removed from Nexus. Graph memory is now
+> provided by the Obsidian vault + graphify combo (conversations → vault → graphify
+> knowledge graph, queried via MCP). This writeup is kept for the Postgres findings
+> and the eval-isolation lesson below; the `mempalace` backend it compares against is
+> no longer wired. The eval harness now runs the Postgres cross-conversation cases only.
+
 ## Question
 Nexus has two long-term memory options: a simple Postgres key-value store
 (hand-built `save_memory` / `load_memory`) and the MemPalace MCP server

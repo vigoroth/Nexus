@@ -111,7 +111,6 @@ def main() -> None:
     async def all_evals():
         # the comparison: identical cross-conversation cases, each memory backend
         await _report("CROSS-CONV — POSTGRES", CROSS_CONV_CASES, _run_cross_case, "postgres")
-        await _report("CROSS-CONV — MEMPALACE", CROSS_CONV_CASES, _run_cross_case, "mempalace")
         await _report("MEMORY-INJECTION SECURITY", SECURITY_CASES, _run_security_case)
     asyncio.run(all_evals())
 

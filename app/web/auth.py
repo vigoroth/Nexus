@@ -31,8 +31,8 @@ def make_session_token() -> str:
     return _serializer.dumps({"authed": True})
 
 
-def valid_session(request: Request) -> bool:
-    token = request.cookies.get(COOKIE_NAME)
+def valid_token(token: str | None) -> bool:
+    """Validate a raw session token (shared by HTTP requests and WS handshakes)."""
     if not token:
         return False
     try:
@@ -40,6 +40,10 @@ def valid_session(request: Request) -> bool:
         return True
     except (BadSignature, SignatureExpired):
         return False
+
+
+def valid_session(request: Request) -> bool:
+    return valid_token(request.cookies.get(COOKIE_NAME))
 
 
 def require_auth(request: Request):

@@ -78,10 +78,10 @@ def get_messages(conversation_id: str) -> list[dict]:
     """Return all messages in a conversation, oldest first."""
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT role, content FROM messages "
+            "SELECT role, content, created_at FROM messages "
             "WHERE conversation_id = %s ORDER BY created_at",
             (conversation_id,),
         ).fetchall()
-    return [{"role": r[0], "content": r[1]} for r in rows]
+    return [{"role": r[0], "content": r[1], "created_at": str(r[2])} for r in rows]
 
 

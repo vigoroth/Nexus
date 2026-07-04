@@ -24,17 +24,56 @@ def init_metrics_table() -> None:
             "success BOOLEAN, "
             "error TEXT)"
         )
+        # web-chat metrics link runs to a conversation + the model used
+        conn.execute("ALTER TABLE run_metrics ADD COLUMN IF NOT EXISTS conversation_id TEXT")
+        conn.execute("ALTER TABLE run_metrics ADD COLUMN IF NOT EXISTS model TEXT")
 
 
-def record_run(label, duration_ms, input_tokens, output_tokens, cost_usd, success, error=None):
+def record_run(label, duration_ms, input_tokens, output_tokens, cost_usd, success,
+               error=None, conversation_id=None, model=None):
     """Write one run's metrics to Postgres."""
     with _conn() as conn:
         conn.execute(
             "INSERT INTO run_metrics "
-            "(label, duration_ms, input_tokens, output_tokens, cost_usd, success, error) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (label, duration_ms, input_tokens, output_tokens, cost_usd, success, error),
+            "(label, duration_ms, input_tokens, output_tokens, cost_usd, success, error, "
+            " conversation_id, model) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (label, duration_ms, input_tokens, output_tokens, cost_usd, success, error,
+             conversation_id, model),
         )
+
+
+def get_stats_summary() -> dict:
+    """Totals, 14-day daily series, and the last 20 chat runs — one round trip
+    via json_agg/row_to_json instead of three separate queries."""
+    with _conn() as conn:
+        row = conn.execute(
+            "WITH t AS ("
+            "  SELECT COUNT(*) runs, "
+            "         COALESCE(AVG(CASE WHEN success THEN 1.0 ELSE 0.0 END), 0) success_rate, "
+            "         COALESCE(AVG(duration_ms), 0) avg_ms, "
+            "         COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms), 0) p95_ms, "
+            "         COALESCE(SUM(input_tokens), 0) input_tokens, "
+            "         COALESCE(SUM(output_tokens), 0) output_tokens, "
+            "         COALESCE(SUM(cost_usd), 0) cost_usd "
+            "  FROM run_metrics WHERE label = 'chat'"
+            "), d AS ("
+            "  SELECT date_trunc('day', ts)::date::text AS day, COUNT(*) runs, "
+            "         COALESCE(SUM(cost_usd), 0) cost, COALESCE(AVG(duration_ms), 0) avg_ms "
+            "  FROM run_metrics WHERE label = 'chat' AND ts > now() - interval '14 days' "
+            "  GROUP BY 1 ORDER BY 1"
+            "), r AS ("
+            "  SELECT to_char(ts, 'MM-DD HH24:MI') AS ts, COALESCE(model, '?') AS model, "
+            "         duration_ms AS ms, input_tokens + output_tokens AS tokens, "
+            "         cost_usd AS cost, success AS ok "
+            "  FROM run_metrics WHERE label = 'chat' ORDER BY id DESC LIMIT 20"
+            ")"
+            "SELECT (SELECT row_to_json(t) FROM t), "
+            "       COALESCE((SELECT json_agg(d) FROM d), '[]'), "
+            "       COALESCE((SELECT json_agg(r) FROM r), '[]')"
+        ).fetchone()
+    totals, daily, recent = row
+    return {"totals": totals, "daily": daily, "recent": recent}
 
 
 @contextmanager
