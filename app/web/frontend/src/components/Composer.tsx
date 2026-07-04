@@ -2,10 +2,11 @@ import { useRef, useState } from 'react'
 import type { ModelsByProvider } from '../api'
 import { Bars, Term, ArrowUp, ChevronDown } from './Icons'
 
-export default function Composer({ models, disabled, onSend, onTerminal }: {
+export default function Composer({ models, disabled, onSend, onTerminal, termEnabled }: {
   models: ModelsByProvider; disabled: boolean
   onSend: (msg: string, provider: string | null, model: string | null, mode: string) => void
   onTerminal: () => void
+  termEnabled: boolean
 }) {
   const [msg, setMsg] = useState('')
   const [mode, setMode] = useState<'agent' | 'chat'>('agent')
@@ -77,13 +78,15 @@ export default function Composer({ models, disabled, onSend, onTerminal }: {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={onTerminal} title="Terminal"
-              style={{ width: 36, height: 34, display: 'flex', alignItems: 'center',
-                       justifyContent: 'center', background: 'var(--btn-bg)',
-                       border: '1px solid var(--hair-2)', borderRadius: 8,
-                       color: 'var(--muted)', cursor: 'pointer' }}>
-              <Term size={16}/>
-            </button>
+            {termEnabled && (
+              <button onClick={onTerminal} title="Terminal"
+                style={{ width: 36, height: 34, display: 'flex', alignItems: 'center',
+                         justifyContent: 'center', background: 'var(--btn-bg)',
+                         border: '1px solid var(--hair-2)', borderRadius: 8,
+                         color: 'var(--muted)', cursor: 'pointer' }}>
+                <Term size={16}/>
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ display: 'flex', background: 'var(--pill-bg)',

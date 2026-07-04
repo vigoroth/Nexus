@@ -2,9 +2,10 @@
 
 > **Historical.** MemPalace has since been removed from Nexus. Graph memory is now
 > provided by the Obsidian vault + graphify combo (conversations → vault → graphify
-> knowledge graph, queried via MCP). This writeup is kept for the Postgres findings
-> and the eval-isolation lesson below; the `mempalace` backend it compares against is
-> no longer wired. The eval harness now runs the Postgres cross-conversation cases only.
+> knowledge graph, queried via the native `graph_query` tool). This writeup is kept
+> for the Postgres findings and the eval-isolation lesson below; the `mempalace`
+> backend it compares against is no longer wired. For the current comparison against
+> the graphify knowledge graph, see **Postgres vs. graph memory** at the end.
 
 ## Question
 Nexus has two long-term memory options: a simple Postgres key-value store
@@ -101,3 +102,55 @@ prompt injection through poisoned memory.
   different drawer structuring might shift cold-start behaviour.
 - Store-isolation between runs was added as a lesson after the reversal was
   observed.
+
+---
+
+# Postgres vs. graph memory (graphify) — 2026-07-04
+
+The same cross-conversation cases now run against the replacement graph memory:
+facts are seeded into a **fresh, isolated eval vault** (wiped every run — the
+state-isolation lesson above, applied from the start this time), `graphify
+extract` builds a graph over them, and the agent recalls in a fresh thread with
+`graph_query` as its **only** memory path (`build_graph(memory_backend="graph")`
+binds no Postgres tools and injects no stored facts).
+
+## Results (two consecutive runs, identical scores — isolation holds)
+
+| Backend  | Run 1 | Run 2 | Failures                    |
+|----------|-------|-------|-----------------------------|
+| Postgres | 7/7   | 7/7   | —                           |
+| Graph    | 5/7   | 5/7   | x_recall_job, x_recall_pet  |
+| Security | 2/2   | 2/2   | —                           |
+
+## Interpretation: storage is fine, retrieval is lexical
+
+Both failing facts **are in the graph** — `graphify extract` created nodes for
+them (e.g. a "Dog named Rex" node from the pet conversation). The misses happen
+at query time: `graphify query` picks BFS start nodes by matching question words
+against node labels, so "What is my job?" finds nothing (no label overlap with
+the stored node) while a probe containing "dog" hits "Dog named Rex" directly.
+Recall is **phrasing-dependent**: abstract recall questions that share no
+vocabulary with the extracted node labels miss.
+
+This is the mirror image of the MemPalace finding. MemPalace's *semantic* search
+failed cold and improved with density; graphify's *lexical* traversal works from
+the first extract but only when the question's words overlap the graph's labels.
+Postgres key-value recall remains the only backend that is both cold-start
+reliable and phrasing-insensitive for discrete facts.
+
+## Standing setup notes
+
+- The eval vault must live **outside the repo**: graphify honors `.gitignore`,
+  and a vault under the ignored `data/` dir is silently skipped ("found 0 docs").
+- `graphify extract` must be pinned with `--backend` (the eval uses `openai`;
+  production `refresh_graph` maps it from `Settings.llm_provider`): auto-detect
+  selects any backend with an env key present, so a stale `GOOGLE_API_KEY`
+  silently routed every extract to gemini, which failed on an invalid key.
+
+## Decision (unchanged, refined)
+
+Postgres stays the backbone for discrete auto-memory facts. Graph memory's role
+is **relational/thematic recall** — how topics across conversations connect —
+which these discrete-fact cases deliberately do not measure. The 5/7 shows it
+can substitute for fact recall in a pinch, but its retrieval needs vocabulary
+overlap; treat it as a complement, not a replacement.

@@ -15,7 +15,7 @@ Nexus is an autonomous AI agent that can:
 - **Connect to the MCP ecosystem** — integrates external Model Context Protocol servers (filesystem, web fetch) alongside its own tools, all through one async agent loop. Tools are curated to keep selection sharp.
 - **Search and fetch the web** — `web_search` (DuckDuckGo, no API key) to find pages; the MCP `fetch` server to read a specific URL.
 - **Answer from your own documents** — advanced RAG: hybrid search (semantic + keyword), Reciprocal Rank Fusion, cross-encoder reranking, and LLM query expansion, with citations.
-- **Remember you** — short-term conversation memory (per thread), long-term memory (Postgres), plus a knowledge-graph memory: conversations are written to an Obsidian vault and graphify builds a queryable graph over them, exposed to the agent via MCP. Memory is verified by an eval harness.
+- **Remember you** — short-term conversation memory (per thread), long-term memory (Postgres), plus a knowledge-graph memory: conversations are written to an Obsidian vault and graphify builds a queryable graph over them, exposed to the agent through the native `graph_query` tool. Memory is verified by an eval harness.
 - **Be protected** — the web UI sits behind a username + password login gate (bcrypt-hashed credentials, signed session cookies).
 - **Monitor itself** — every run records latency, tokens, cost, and success to Postgres, surfaced in Grafana.
 - **Chat like a real app** — streaming web UI with a conversation sidebar; past chats persist and reopen.

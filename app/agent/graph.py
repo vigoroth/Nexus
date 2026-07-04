@@ -63,9 +63,11 @@ async def build_graph(checkpointer=None, model: str | None = None,
                       provider: str | None = None,
                       memory_backend: str = "both",
                       plain: bool = False):
-        """memory_backend: 'postgres' | 'both' — toggles the Postgres long-term
-        memory tools. Graph memory comes from the Obsidian vault + graphify
-        knowledge graph via the native graph_query tool (see app.tools.graph_query).
+        """memory_backend: 'postgres' | 'graph' | 'both' — 'graph' drops the
+        Postgres long-term memory tools AND the stored-facts injection, so recall
+        can only come from the graphify knowledge graph via graph_query (used by
+        the eval to isolate the graph memory path). Graph memory itself comes from
+        the Obsidian vault + graphify (see app.tools.graph_query).
         plain=True → no tools bound at all (UI 'Chat' mode: direct LLM answer,
         still with conversation memory + known facts injected)."""
         if plain:
@@ -80,9 +82,9 @@ async def build_graph(checkpointer=None, model: str | None = None,
             base = [search_documents, web_search, run_shell, graph_query] + other_mcp
 
             # Postgres long-term memory tools (kept toggleable for backend experiments)
-            if memory_backend == "postgres":
-                mem_tools = [save_memory, load_memory]
-            else:  # both (normal operation)
+            if memory_backend == "graph":
+                mem_tools = []  # graph-only: recall must go through graph_query
+            else:  # postgres / both (normal operation)
                 mem_tools = [save_memory, load_memory]
 
             all_tools = base + mem_tools
@@ -93,7 +95,9 @@ async def build_graph(checkpointer=None, model: str | None = None,
         def llm_node(state: AgentState) -> dict:
                     from app.memory.long_term import recall_all
                     from langchain_core.messages import HumanMessage
-                    facts = recall_all()
+                    # graph-only backend: no Postgres facts injected either,
+                    # otherwise stored facts would contaminate the graph eval
+                    facts = {} if memory_backend == "graph" else recall_all()
 
                     messages = [SystemMessage(content=SYSTEM_PROMPT)]
 

@@ -62,10 +62,18 @@ def refresh_graph(vault_path: Path = VAULT_PATH) -> None:
     import time
     if time.monotonic() - _last_extract_ts < _MIN_EXTRACT_INTERVAL_S:
         return  # too soon since the last one
+    # pin the extract backend to the app's LLM provider — graphify's auto-detect
+    # picks any backend with an env key set, even an invalid one (a stale
+    # GOOGLE_API_KEY silently selects gemini and every extract fails unseen)
+    backend = {"openai": "openai", "anthropic": "claude",
+               "google": "gemini", "ollama": "ollama"}.get(get_settings().llm_provider)
+    cmd = [graphify, "extract", str(vault_path)]
+    if backend:
+        cmd += ["--backend", backend]
     try:
         # detached, output discarded — do not wait
         _extract_proc = subprocess.Popen(
-            [graphify, "extract", str(vault_path)],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             cwd=str(vault_path),

@@ -140,7 +140,8 @@ def index(request: Request):
 def status():
     """Lightweight status for the sidebar dot (graph build state)."""
     from app.web.vault_writer import graph_build_status
-    return {"graph": graph_build_status()}
+    from app.web.term import term_enabled
+    return {"graph": graph_build_status(), "term_enabled": term_enabled()}
 
 
 @app.get("/conversations", dependencies=[Depends(require_auth)])

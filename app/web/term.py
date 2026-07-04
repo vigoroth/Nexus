@@ -2,8 +2,9 @@
 
 Security: this hands a real shell on the host to anyone holding a valid Nexus
 session cookie. The WS handshake re-validates the signed session cookie, and
-the server binds 127.0.0.1 by default (see server.main). Treat the login
-credentials accordingly.
+the server binds 127.0.0.1 by default (see server.main). When NEXUS_BIND is
+non-local the endpoint is disabled entirely unless NEXUS_TERM_ALLOW_REMOTE=1
+is set explicitly. Treat the login credentials accordingly.
 """
 import asyncio
 import fcntl
@@ -24,7 +25,18 @@ def _valid_ws_session(ws: WebSocket) -> bool:
     return valid_token(ws.cookies.get(COOKIE_NAME))
 
 
+def term_enabled() -> bool:
+    """Shell endpoint is localhost-only unless explicitly opted into."""
+    bind = os.environ.get("NEXUS_BIND", "127.0.0.1")
+    if bind in ("127.0.0.1", "localhost", "::1"):
+        return True
+    return os.environ.get("NEXUS_TERM_ALLOW_REMOTE") == "1"
+
+
 async def terminal_ws(ws: WebSocket) -> None:
+    if not term_enabled():
+        await ws.close(code=4404)  # terminal disabled on non-local bind
+        return
     if not _valid_ws_session(ws):
         await ws.close(code=4403)  # policy violation: not authenticated
         return

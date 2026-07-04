@@ -22,7 +22,7 @@ export const getMessages = (id: string) => j<Message[]>('/conversations/' + id)
 export const getModels = () => j<ModelsByProvider>('/models')
 export const getGraph = () => j<{ nodes: never[]; links: never[] }>('/graph')
 export const getStats = () => j<Stats>('/stats')
-export const getStatus = () => j<{ graph: string }>('/status')
+export const getStatus = () => j<{ graph: string; term_enabled: boolean }>('/status')
 
 export type StreamHandlers = {
   onConversation: (id: string) => void

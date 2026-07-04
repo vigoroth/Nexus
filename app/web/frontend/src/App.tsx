@@ -22,6 +22,7 @@ export default function App() {
   const [activity, setActivity] = useState('')
   const [busy, setBusy] = useState(false)
   const [graphStatus, setGraphStatus] = useState('idle')
+  const [termEnabled, setTermEnabled] = useState(false)
 
   // rAF token batching: buffer stream tokens, flush once per frame
   const pendingRef = useRef('')
@@ -38,7 +39,10 @@ export default function App() {
     getConversations().then(setConvs).catch(console.error)
     getModels().then(setModels).catch(console.error)
     const pollStatus = () => {
-      if (document.visibilityState === 'visible') getStatus().then(s => setGraphStatus(s.graph)).catch(() => {})
+      if (document.visibilityState === 'visible') getStatus().then(s => {
+        setGraphStatus(s.graph)
+        setTermEnabled(s.term_enabled)
+      }).catch(() => {})
     }
     pollStatus()
     const t = window.setInterval(pollStatus, 10000)
@@ -115,7 +119,7 @@ export default function App() {
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <Sidebar convs={convs} activeConv={convId} view={view} graphStatus={graphStatus}
-                 collapsed={collapsed} onToggle={toggleCollapsed}
+                 collapsed={collapsed} termEnabled={termEnabled} onToggle={toggleCollapsed}
                  onNewChat={newChat} onOpenConv={openConv} onView={setView}/>
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
@@ -131,14 +135,14 @@ export default function App() {
                 </div>
               </div>
               <ChatView messages={messages} streaming={streaming} activity={activity}/>
-              <Composer models={models} disabled={busy} onSend={send}
+              <Composer models={models} disabled={busy} onSend={send} termEnabled={termEnabled}
                         onTerminal={() => setView('terminal')}/>
             </>
           )}
           <Suspense fallback={<div style={{ padding: 40, color: 'var(--muted)' }}>loading ...</div>}>
             {view === 'graph' && <GraphView/>}
             {view === 'stats' && <StatsView/>}
-            {view === 'terminal' && <TerminalView/>}
+            {view === 'terminal' && termEnabled && <TerminalView/>}
           </Suspense>
         </main>
       </div>

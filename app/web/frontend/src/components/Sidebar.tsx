@@ -23,10 +23,10 @@ function NavRow({ color, icon, label, right, onClick, active }: {
   )
 }
 
-function Sidebar({ convs, activeConv, view, graphStatus, collapsed,
+function Sidebar({ convs, activeConv, view, graphStatus, collapsed, termEnabled,
                     onToggle, onNewChat, onOpenConv, onView }: {
   convs: Conversation[]; activeConv: string | null; view: View; graphStatus: string
-  collapsed: boolean; onToggle: () => void; onNewChat: () => void
+  collapsed: boolean; termEnabled: boolean; onToggle: () => void; onNewChat: () => void
   onOpenConv: (id: string) => void; onView: (v: View) => void
 }) {
   const [q, setQ] = useState('')
@@ -98,8 +98,10 @@ function Sidebar({ convs, activeConv, view, graphStatus, collapsed,
                 </span>}/>
         <NavRow color="var(--blue)" icon={<Bars/>} label="Stats" active={view === 'stats'}
                 onClick={() => onView('stats')}/>
-        <NavRow color="var(--blue)" icon={<Term/>} label="Terminal" active={view === 'terminal'}
-                onClick={() => onView('terminal')}/>
+        {termEnabled && (
+          <NavRow color="var(--blue)" icon={<Term/>} label="Terminal" active={view === 'terminal'}
+                  onClick={() => onView('terminal')}/>
+        )}
       </nav>
     </aside>
   )
